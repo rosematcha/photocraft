@@ -1268,6 +1268,9 @@ mod input_tests;
 mod pencil_tests;
 
 #[cfg(test)]
+mod transform_undo_tests;
+
+#[cfg(test)]
 mod move_auto_select_tests;
 
 #[cfg(test)]
