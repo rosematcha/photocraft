@@ -1065,9 +1065,17 @@ impl PhotocraftApp {
         theme::install_fonts(ctx);
         egui_extras::install_image_loaders(ctx);
         theme::apply(ctx, kind);
-        // egui's own ⌘+ / ⌘- / ⌘0 scale the whole interface; PhotoCraft zooms the canvas instead
-        // (shortcuts.rs), like Photoshop.
-        ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        ctx.options_mut(|o| {
+            // egui's own ⌘+ / ⌘- / ⌘0 scale the whole interface; PhotoCraft zooms the canvas instead
+            // (shortcuts.rs), like Photoshop.
+            o.zoom_with_keyboard = false;
+            // Photoshop's wheel: ⌘-scroll (Ctrl-scroll on Windows and Linux) scrolls sideways, and
+            // ⌥-scroll zooms the canvas (canvas.rs), so no modifier turns scrolling into egui's zoom.
+            // Trackpad pinches still zoom where they arrive as zoom events (macOS, browsers); a
+            // Windows touchpad sends its pinch as Ctrl-scroll, which now scrolls sideways.
+            o.input_options.zoom_modifier = egui::Modifiers::NONE;
+            o.input_options.horizontal_scroll_modifier = egui::Modifiers::SHIFT | egui::Modifiers::COMMAND;
+        });
     }
 }
 

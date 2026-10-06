@@ -207,3 +207,66 @@ fn kerning_field_values() {
         assert_eq!(crate::type_tool::parse_kerning(s), None, "{s}");
     }
 }
+
+/// Photoshop's wheel over the canvas: ⌘-scroll (Ctrl-scroll on Windows) scrolls sideways and
+/// ⌥-scroll zooms, about 5 % per notch.
+#[test]
+fn modified_scroll_pans_sideways_or_zooms_like_photoshop() {
+    let mac_cmd = Modifiers { mac_cmd: true, command: true, ..Modifiers::NONE };
+    let windows_ctrl = Modifiers { ctrl: true, command: true, ..Modifiers::NONE };
+    for (m, zooms) in [(mac_cmd, false), (windows_ctrl, false), (Modifiers::ALT, true)] {
+        let mut h = harness();
+        let r = h.state().last_canvas_rect;
+        h.hover_at(r.center());
+        h.run_steps(1);
+        let (z0, c0) = (zoom(&h), h.state().ui.views[0].center);
+        h.event(egui::Event::ModifiersChanged(m));
+        h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -40.0), phase: egui::TouchPhase::Move, modifiers: m });
+        h.run_steps(8);
+        let (z1, c1) = (zoom(&h), h.state().ui.views[0].center);
+        if zooms {
+            assert!(z1 < z0, "{m:?} zooms: {z0} -> {z1}");
+            if m == Modifiers::ALT {
+                assert!((z0 / z1 - 1.05).abs() < 1e-3, "one notch is a 5 % step: {z0} -> {z1}");
+            }
+        } else {
+            assert_eq!(z1, z0, "{m:?} must not zoom");
+            assert!(c1[0] > c0[0] && c1[1] == c0[1], "{m:?} scrolls sideways: {c0:?} -> {c1:?}");
+        }
+    }
+}
+
+/// ⌥-scroll zooms only the canvas: everywhere else (panels, lists) it is still a scroll.
+#[test]
+fn alt_scroll_still_scrolls_outside_the_canvas() {
+    let mut h = Harness::builder().with_size(vec2(300.0, 200.0)).build_ui_state(
+        |ui, seen: &mut (egui::Vec2, f32)| {
+            let (s, z) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta()));
+            seen.0 += s;
+            seen.1 *= z;
+        },
+        (egui::Vec2::ZERO, 1.0),
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+    h.run_steps(2);
+    h.hover_at(pos2(100.0, 100.0));
+    h.event(egui::Event::ModifiersChanged(Modifiers::ALT));
+    h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -40.0), phase: egui::TouchPhase::Move, modifiers: Modifiers::ALT });
+    h.run_steps(8);
+    let (scroll, zoom) = *h.state();
+    assert!(scroll.y < 0.0 && zoom == 1.0, "a scroll, not a zoom: {scroll:?} {zoom}");
+}
+
+/// A trackpad pinch arrives as a zoom event (macOS; browsers turn their simulated Ctrl-scroll into
+/// one) and still zooms the canvas.
+#[test]
+fn a_pinch_still_zooms() {
+    let mut h = harness();
+    let r = h.state().last_canvas_rect;
+    h.hover_at(r.center());
+    h.run_steps(1);
+    let z0 = zoom(&h);
+    h.event(egui::Event::Zoom(1.25));
+    h.run_steps(2);
+    assert!((zoom(&h) / z0 - 1.25).abs() < 1e-3, "{z0} -> {}", zoom(&h));
+}

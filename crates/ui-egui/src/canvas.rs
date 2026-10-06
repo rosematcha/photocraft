@@ -1394,13 +1394,21 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     // Under an open dialog the canvas widget is inert, but the image still pans and zooms.
     let under_dialog = !app.ui.dialogs.is_empty();
     let free_hover = under_dialog && crate::dialogs::free_pointer_over(&ctx, rect).is_some();
-    // Navigation: scroll pans, pinch / ⌘-scroll zooms around the pointer.
+    // Navigation: scroll pans (⌘-scroll sideways), pinch / ⌥-scroll zooms around the pointer.
     if response.hovered() || free_hover {
-        let (scroll, zoom_delta, pointer) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
+        let (scroll, zoom_delta, pointer, alt) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos(), i.modifiers.alt));
         if zoom_delta != 1.0
             && let Some(p) = pointer
         {
             let nz = (view.zoom * zoom_delta).clamp(0.01, 64.0);
+            zoom_about(&mut view, &xf, p, nz);
+        } else if scroll.y != 0.0
+            && alt
+            && let Some(p) = pointer
+        {
+            // ⌥-scroll zooms in Photoshop's gentle steps, about 5 % per wheel notch.
+            let notch = ui.ctx().options(|o| o.input_options.line_scroll_speed).max(1.0);
+            let nz = (view.zoom * 1.05f32.powf(scroll.y / notch)).clamp(0.01, 64.0);
             zoom_about(&mut view, &xf, p, nz);
         } else if scroll.y != 0.0
             && app.session.prefs().general.zoom_with_scroll_wheel
