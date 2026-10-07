@@ -85,6 +85,10 @@ impl Surface {
     pub fn default_pixel(&self) -> Vec<f32> {
         decode_pixel(&self.format, &self.default_pixel)
     }
+    /// Change what untouched pixels read as (allocated tiles keep their pixels).
+    pub fn set_default(&mut self, pixel: &[f32]) {
+        encode_pixel(&self.format, pixel, &mut self.default_pixel);
+    }
 
     /// Mutable access to a tile, allocating it (filled with the default pixel) or un-sharing it.
     pub fn tile_mut(&mut self, c: TileCoord) -> &mut Tile {

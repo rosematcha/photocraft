@@ -279,6 +279,9 @@ pub struct Session {
     pub quick_mask_options: channel_cmds::QuickMaskOptions,
     /// Colour channel the running command may change (a single colour channel is targeted).
     color_restrict: Option<usize>,
+    /// The shell targets the active layer's mask (its Layers thumbnail is selected): pixel
+    /// commands edit the mask unless they name a target.
+    pub layer_mask_targeted: bool,
     /// Edit › Preferences, keyboard shortcuts, menu and toolbar customisation (see `prefs`).
     pub prefs: prefs::PrefsStore,
     /// Edit menu state: Fade source, custom shape library (see `edit_menu_cmds`).

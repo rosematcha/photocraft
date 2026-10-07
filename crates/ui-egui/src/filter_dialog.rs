@@ -399,10 +399,19 @@ pub fn params_of(f: &Map<String, Value>) -> Value {
     Value::Object(f.iter().filter(|(k, v)| !k.starts_with("__") && !unset(k, v)).map(|(k, v)| (k.clone(), v.clone())).collect())
 }
 
-/// Compute a preview document: run `command` with `params` on the proxy (scaled) copy of `doc`.
-pub fn preview_document(doc: &Document, active: Option<photocraft_doc::LayerId>, command: &str, params: &Value, k: u32) -> Option<Document> {
+/// Compute a preview document: run `command` with `params` on the proxy (scaled) copy of `doc`,
+/// on its mask when `mask_targeted` (see `Session::layer_mask_targeted`).
+pub fn preview_document(
+    doc: &Document,
+    active: Option<photocraft_doc::LayerId>,
+    command: &str,
+    params: &Value,
+    k: u32,
+    mask_targeted: bool,
+) -> Option<Document> {
     let proxy = crate::proxy::proxy_document(doc, k);
     let mut s = photocraft_engine::Session::new();
+    s.layer_mask_targeted = mask_targeted;
     s.add_document(proxy, None);
     if let Some(id) = active {
         s.select_layer(id).ok()?;
@@ -535,7 +544,7 @@ mod tests {
         );
         let bg = doc.layers[0].id;
         doc.layers[0].surface_mut().unwrap().fill_rect(photocraft_geom::Rect::new(0, 0, 32, 64), &[0.0, 0.0, 0.0, 1.0]);
-        let out = preview_document(&doc, Some(bg), "filter.blur.gaussianBlur", &json!({"radius": 4.0}), 1).unwrap();
+        let out = preview_document(&doc, Some(bg), "filter.blur.gaussianBlur", &json!({"radius": 4.0}), 1, false).unwrap();
         let p = out.layers[0].surface().unwrap().pixel(32, 32);
         assert!(p[0] > 0.2 && p[0] < 0.8, "edge blurred: {p:?}");
         assert_eq!(label("wavelengthMin"), "Wavelength Min");

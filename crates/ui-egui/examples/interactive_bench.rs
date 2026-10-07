@@ -266,6 +266,7 @@ fn main() {
                 "image.adjustments.curves",
                 &json!({"points": [[0, 0], [100, 100 + v], [255, 255]]}),
                 k,
+                false,
             )
             .expect("preview");
             std::hint::black_box(photocraft_compose::flatten(&p));

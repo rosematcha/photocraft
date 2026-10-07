@@ -9,7 +9,11 @@ use photocraft_raster::{Surface, from_rgba, to_rgba};
 /// Applies `adj` to a surface (any colour model and depth, via straight RGBA) through the
 /// selection; `mode` is the document's, for the tone transfer (e.g. Exposure in Grayscale).
 pub fn adjust_surface(s: &mut Surface, adj: &Adjustment, selection: Option<&Surface>, mode: photocraft_color::ColorMode) {
-    let r = s.content_bounds();
+    adjust_region(s, s.content_bounds(), adj, selection, mode);
+}
+
+/// [`adjust_surface`] over `r`, including pixels that still read as the surface's default.
+pub fn adjust_region(s: &mut Surface, r: Rect, adj: &Adjustment, selection: Option<&Surface>, mode: photocraft_color::ColorMode) {
     if r.is_empty() {
         return;
     }
@@ -32,6 +36,26 @@ pub fn adjust_surface(s: &mut Surface, adj: &Adjustment, selection: Option<&Surf
         out.extend_from_slice(&enc[..m]);
     }
     s.write_region(r, &out);
+}
+
+/// Applies `adj` to a layer mask: within the selection, or else to the whole mask, including
+/// the value its untouched pixels read as.
+pub fn adjust_mask(m: &mut Surface, adj: &Adjustment, selection: Option<&Surface>) {
+    let gray = photocraft_color::ColorMode::Grayscale;
+    if let Some(sel) = selection {
+        for (c, _) in sel.tiles() {
+            adjust_region(m, c.rect(), adj, selection, gray);
+        }
+    } else {
+        let tiles: Vec<Rect> = m.tiles().map(|(c, _)| c.rect()).collect();
+        for r in tiles {
+            adjust_region(m, r, adj, None, gray);
+        }
+        let mut px = Surface::with_default(m.format(), &m.default_pixel());
+        adjust_region(&mut px, Rect::new(0, 0, 1, 1), adj, None, gray);
+        m.set_default(&px.pixel(0, 0));
+    }
+    m.prune();
 }
 
 /// Fill (respecting selection coverage) with a straight RGBA colour.

@@ -184,6 +184,10 @@ fn destructive_adjust(s: &mut Session, label: &str, adj: Adjustment, p: &Value) 
         let sel = doc.selection.clone();
         let mode = doc.mode;
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+        if is_mask_target(p) {
+            pixels::adjust_mask(paint_surface(l, p)?, &adj, sel.as_ref());
+            return Ok(());
+        }
         let surf = l.surface_mut().ok_or_else(|| EngineError::Other("not a pixel layer".into()))?;
         pixels::adjust_surface(surf, &adj, sel.as_ref(), mode);
         Ok(())
@@ -926,7 +930,8 @@ fn build() -> Vec<CommandSpec> {
             enabled: has_pixel_or_channel,
             run: |s, p| {
                 let kind = p.get("__kind").and_then(Value::as_str).unwrap_or("invert").to_string();
-                let adj = crate::adjust_params::from_params(&kind, p, None, doc_mode(s))?;
+                let mode = if is_mask_target(p) { ColorMode::Grayscale } else { doc_mode(s) };
+                let adj = crate::adjust_params::from_params(&kind, p, None, mode)?;
                 let label = adj.label().to_string();
                 destructive_adjust(s, &label, adj, p)
             },

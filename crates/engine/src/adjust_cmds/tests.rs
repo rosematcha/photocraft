@@ -223,3 +223,57 @@ fn new_kinds_round_trip_through_psd_and_pcraft() {
         assert_eq!(a.content, b.content);
     }
 }
+
+/// #780: with the layer mask targeted, adjustments edit the mask, including its untouched pixels.
+#[test]
+fn adjustments_apply_to_a_targeted_layer_mask() {
+    let mask = |s: &Session| s.active().unwrap().doc.layer(s.active().unwrap().active_layer.unwrap()).unwrap().mask.clone().unwrap().surface;
+    for depth in DEPTHS {
+        let mut s = session(depth, "rgb");
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("edit.fill", json!({"contents": "color", "color": "#336699"})).unwrap();
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        let before = rgba(&s, 3, 3);
+        s.execute("image.adjustments.invert", json!({"target": "mask"})).unwrap();
+        let m = mask(&s);
+        assert_eq!((m.sample_channel(3, 3, 0), m.sample_channel(-500, 900, 0), m.tile_count()), (0.0, 0.0, 0), "{depth}: Reveal All inverts to Hide All");
+        assert_eq!(rgba(&s, 3, 3), before, "{depth}: the pixels are untouched");
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 32})).unwrap();
+        s.execute("image.adjustments.invert", json!({"target": "mask"})).unwrap();
+        let m = mask(&s);
+        assert_eq!((m.sample_channel(5, 5, 0), m.sample_channel(20, 5, 0)), (1.0, 0.0), "{depth}: limited by the selection");
+        s.undo();
+        assert_eq!(mask(&s).sample_channel(5, 5, 0), 0.0, "{depth}: one undo step");
+    }
+    // The shell's mask target routes commands without naming it, and isn't journalled.
+    let mut s = session(8, "rgb");
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+    s.layer_mask_targeted = true;
+    s.execute("image.adjustments.invert", json!({})).unwrap();
+    assert_eq!(mask(&s).sample_channel(3, 3, 0), 0.0);
+    assert_eq!(s.journal.last().unwrap(), &("image.adjustments.invert".to_string(), json!({})));
+    // Fade blends a whole-mask adjustment back, off the canvas too.
+    s.execute("edit.fade", json!({"opacity": 50})).unwrap();
+    let m = mask(&s);
+    assert!((m.sample_channel(3, 3, 0) - 0.5).abs() < 0.01 && (m.sample_channel(-500, 900, 0) - 0.5).abs() < 0.01);
+    // Params naming a layer edit that layer's pixels.
+    let bg = s.active().unwrap().doc.layers[0].id.0;
+    s.execute("edit.fill", json!({"layer": bg, "contents": "color", "color": "#ff0000"})).unwrap();
+    assert!((mask(&s).sample_channel(3, 3, 0) - 0.5).abs() < 0.01, "the mask is left alone");
+    // A targeted colour channel wins.
+    s.execute("channel.target", json!({"channel": "red"})).unwrap();
+    let before = mask(&s).sample_channel(3, 3, 0);
+    s.execute("image.adjustments.invert", json!({})).unwrap();
+    assert_eq!(mask(&s).sample_channel(3, 3, 0), before, "the mask is left alone");
+    // A mask is gray in every colour model.
+    for mode in MODES {
+        let mut s = session(8, mode);
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        s.execute("image.adjustments.levels", json!({"target": "mask", "outWhite": 128})).unwrap();
+        assert!((mask(&s).sample_channel(3, 3, 0) - 128.0 / 255.0).abs() < 1e-6, "{mode}");
+    }
+    let mut s = session(8, "rgb");
+    assert!(s.execute("image.adjustments.invert", json!({"target": "mask"})).is_err(), "no mask");
+}

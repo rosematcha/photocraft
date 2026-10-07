@@ -78,11 +78,10 @@ pub(crate) fn after_command(s: &mut Session, id: &str) {
     s.edit_state.fade = Some(FadeSource { doc: st.doc.id, revision: st.revision, layer, mask, label });
 }
 
-/// Tile identity of a surface (pointer equality of its COW tiles).
+/// Tile identity of a surface (pointer equality of its COW tiles) and its default pixel.
 fn crate_fingerprint(s: &Surface) -> u64 {
-    s.tiles().fold(s.tile_count() as u64, |h, (c, t)| {
-        (h ^ std::sync::Arc::as_ptr(t) as usize as u64 ^ ((c.tx as u64) << 32 | c.ty as u32 as u64)).wrapping_mul(0x100_0000_01b3)
-    })
+    let h = s.default_bytes().iter().fold(s.tile_count() as u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x100_0000_01b3));
+    s.tiles().fold(h, |h, (c, t)| (h ^ std::sync::Arc::as_ptr(t) as usize as u64 ^ ((c.tx as u64) << 32 | c.ty as u32 as u64)).wrapping_mul(0x100_0000_01b3))
 }
 
 // ------------------------------------------------------------------ helpers
@@ -205,12 +204,22 @@ fn fade(s: &mut Session, p: &Value) -> Result<Value> {
     if now.format() != before.format() {
         return Err(EngineError::Other("can't fade a step that changed the layer's pixel format".into()));
     }
-    let area = before.content_bounds().union(&now.content_bounds());
+    // A step that changed the default (an adjusted whole mask) fades it, and the canvas with it.
+    let new_default = before.default_bytes() != now.default_bytes();
+    let mut area = before.content_bounds().union(&now.content_bounds());
+    if new_default {
+        area = area.union(&st.doc.bounds());
+    }
     let label = format!("Fade {}", src.label);
     s.edit(&label, |doc, _| {
         let l = doc.layer_mut(src.layer).ok_or(EngineError::NoLayer(src.layer))?;
         let surf = if src.mask { l.mask.as_mut().map(|m| &mut m.surface) } else { l.surface_mut() }.ok_or(EngineError::NoLayer(src.layer))?;
         fade_surface(&before, surf, area, mode, opacity);
+        if new_default {
+            let mut px = Surface::with_default(surf.format(), &surf.default_pixel());
+            fade_surface(&Surface::with_default(surf.format(), &before.default_pixel()), &mut px, Rect::new(0, 0, 1, 1), mode, opacity);
+            surf.set_default(&px.pixel(0, 0));
+        }
         surf.prune();
         Ok(())
     })?;

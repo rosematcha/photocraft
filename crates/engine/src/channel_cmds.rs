@@ -564,8 +564,8 @@ pub(crate) fn inject_target(s: &Session, id: &str, params: Value) -> Value {
     let t = match st.channel_view.target {
         ChannelTarget::Alpha(i) if i < st.doc.channels.len() => json!({ "channel": i }),
         ChannelTarget::Composite if st.doc.quick_mask.is_some() => json!("quickMask"),
-        // Viewing the active layer's mask (⌥-click): pixel commands edit the mask.
-        ChannelTarget::Composite if crate::mask_view_cmds::current(st).is_some() => json!("mask"),
+        // Viewing (⌥-click) or targeting the active layer's mask: pixel commands edit the mask.
+        ChannelTarget::Composite if crate::mask_view_cmds::current(st).is_some() || targets_layer_mask(s, st, &params) => json!("mask"),
         _ => return params,
     };
     match params {
@@ -575,6 +575,12 @@ pub(crate) fn inject_target(s: &Session, id: &str, params: Value) -> Value {
         }
         _ => json!({ "target": t }),
     }
+}
+
+/// The shell targets the active layer's mask (`Session::layer_mask_targeted`) and the params
+/// don't name another layer.
+fn targets_layer_mask(s: &Session, st: &DocState, params: &Value) -> bool {
+    s.layer_mask_targeted && params.get("layer").is_none() && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some())
 }
 
 /// The colour channel pixel commands are limited to, if a single colour channel is targeted.

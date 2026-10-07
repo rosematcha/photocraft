@@ -158,6 +158,30 @@ fn channels_list_the_layer_mask_and_keep_the_aspect() {
     assert!(crate::channels_panel::recorded(&h.ctx).iter().all(|(n, _)| !n.ends_with("Mask")));
 }
 
+/// #780: with the mask thumbnail clicked, Image › Adjustments › Invert inverts the mask.
+#[test]
+fn adjustments_from_the_menu_edit_the_targeted_mask() {
+    let (s, masked, _) = session();
+    let mut h = harness(s, 0, 1.0, 290.0);
+    let pixels = layer(&h, masked).surface().unwrap().rgba(50, 50);
+    let m = mask_rect(&h, masked, MaskKind::Pixel);
+    click_with(&mut h, m.center(), Modifiers::NONE);
+    assert!(h.state().ui.mask_target);
+    let ctx = h.ctx.clone();
+    // A dialog previews on the mask too (the proxy preview, which runs the command).
+    crate::adjust_dialog::open(h.state_mut(), "image.adjustments.levels").unwrap();
+    assert!(!crate::adjust_preview::on_layer(h.state_mut(), 0), "not the adjustment-layer preview");
+    let doc = h.state().session.active().unwrap().doc.clone();
+    let id = photocraft_doc::LayerId(masked);
+    let prev = crate::filter_dialog::preview_document(&doc, Some(id), "image.adjustments.levels", &json!({"outWhite": 128}), 1, true).unwrap();
+    assert!((prev.layer(id).unwrap().mask.as_ref().unwrap().surface.sample_channel(50, 50, 0) - 128.0 / 255.0).abs() < 1e-6);
+    h.state_mut().ui.dialogs.clear();
+    crate::menus::invoke(h.state_mut(), &ctx, "image.adjustments.invert", json!({})).unwrap();
+    let l = layer(&h, masked);
+    assert_eq!(l.mask.as_ref().unwrap().surface.sample_channel(50, 50, 0), 0.0, "the mask is inverted");
+    assert_eq!(l.surface().unwrap().rgba(50, 50), pixels, "the pixels are untouched");
+}
+
 #[test]
 fn paths_list_the_layer_path_above_a_bottom_footer() {
     let (s, masked, shape) = session();

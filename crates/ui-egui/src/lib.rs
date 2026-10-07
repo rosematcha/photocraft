@@ -566,6 +566,7 @@ impl PhotocraftApp {
             }
         }
         // Long commands become background jobs when enabled (`jobs_ui`); the rest run inline.
+        self.session.layer_mask_targeted = self.ui.mask_target;
         let r = jobs_ui::run(self, id, params);
         if r.is_ok() && matches!(id, "edit.copy" | "edit.cut" | "edit.copyMerged") {
             self.clip_external = false;

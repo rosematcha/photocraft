@@ -124,6 +124,7 @@ mod tests {
                 &cmd,
                 &crate::filter_dialog::params_of(&fields),
                 1,
+                false,
             );
             assert!(prev.is_some(), "{kind}: preview");
             assert_eq!(harness.state().session.active().unwrap().revision, before, "{kind}: previewing leaves the document alone");
