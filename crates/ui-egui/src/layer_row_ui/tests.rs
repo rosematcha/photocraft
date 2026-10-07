@@ -222,3 +222,26 @@ fn dragging_down_the_eyes_sweeps_visibility_without_reordering() {
         assert!(visible(&h, rows[1].layer));
     }
 }
+
+/// A locked group's lock shows on every layer inside it, nested groups included.
+#[test]
+fn layers_inside_a_locked_group_inherit_its_lock() {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    let a = s.execute("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap();
+    let inner = s.execute("layer.new.groupFromLayers", json!({})).unwrap()["layer"].as_u64().unwrap();
+    let outer = s.execute("layer.new.groupFromLayers", json!({})).unwrap()["layer"].as_u64().unwrap();
+    let ids = |s: &photocraft_engine::Session| {
+        let mut v: Vec<u64> = super::inherited_locks(&s.active().unwrap().doc).into_iter().map(|id| id.0).collect();
+        v.sort_unstable();
+        v
+    };
+    assert!(ids(&s).is_empty());
+    s.execute("layer.setProps", json!({"layer": outer, "locks": {"position": true}})).unwrap();
+    let mut want = vec![a, inner];
+    want.sort_unstable();
+    assert_eq!(ids(&s), want, "the group's own row isn't an inherited lock");
+    // The pixel lock alone shows no row icon, so it isn't inherited either.
+    s.execute("layer.setProps", json!({"layer": outer, "locks": {"position": false, "pixels": true}})).unwrap();
+    assert!(ids(&s).is_empty());
+}

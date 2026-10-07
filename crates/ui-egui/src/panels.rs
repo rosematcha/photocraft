@@ -1390,6 +1390,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
     // Top of the stack first, groups above their contents, closed groups' contents hidden (#126).
     let rows = crate::layer_tree_ui::display_rows(&doc, !app.ui.layer_filter.is_empty());
+    let inherited = crate::layer_row_ui::inherited_locks(&doc);
     let ctx = ui.ctx().clone();
     let footer = 38.0;
     let fill = ui.available_height() > footer + 60.0;
@@ -1423,7 +1424,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
                 let row = RowSel { selected: selection.contains(&l.id), primary: active == Some(l.id), multi: selection.len() > 1 };
                 let top = ui.cursor().top();
-                layer_row(app, &ctx, ui, &doc, l, depth, row, &mut actions);
+                layer_row(app, &ctx, ui, &doc, l, depth, row, inherited.contains(&l.id), &mut actions);
                 if reveal == Some(l.id) {
                     crate::layer_reveal::scroll_to_row(ui, top);
                 }
@@ -1621,6 +1622,7 @@ fn layer_row(
     l: &Layer,
     depth: usize,
     row: RowSel,
+    inherited_lock: bool,
     actions: &mut Vec<(String, Value)>,
 ) {
     let selected = row.selected;
@@ -1677,7 +1679,7 @@ fn layer_row(
         + 28.0
         + if l.is_group() { crate::layer_tree_ui::TRIANGLE_W } else { 0.0 }
         + if l.clipped { 12.0 } else { 0.0 }
-        + crate::layer_row_ui::reserved_width(l);
+        + crate::layer_row_ui::reserved_width(l, inherited_lock);
     let ts = crate::mask_thumbs_ui::thumb_size(l, if t.pro { 24.0 } else { 34.0 }, rect.width() - others);
     let fixed = others + ts + 6.0 + crate::mask_thumbs_ui::width(l, ts);
     x += 28.0 + crate::layer_row_ui::indent(depth, rect.width(), fixed);
@@ -1709,7 +1711,7 @@ fn layer_row(
     }
     // Right-hand indicators first; the name gets what is left and ends in "…" (#144).
     let fx_open = app.session.active().is_none_or(|d| !d.fx_collapsed.contains(&l.id));
-    let (name_right, indicators, fx_toggled) = crate::layer_row_ui::indicators(ui, &painter, rect, x, l, fx_open, actions);
+    let (name_right, indicators, fx_toggled) = crate::layer_row_ui::indicators(ui, rect, x, l, inherited_lock, fx_open, actions);
     let name_color = if l.visible { t.text } else { t.text_faint };
     let font = if selected && !t.pro { theme::medium(13.0) } else { egui::FontId::proportional(if t.pro { 12.0 } else { 13.0 }) };
     // Photoshop before 2026 set the Background layer's name in italics; 2026 sets it upright.

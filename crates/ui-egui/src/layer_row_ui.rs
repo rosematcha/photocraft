@@ -9,8 +9,9 @@
 
 use egui::{Align2, FontId, Galley, Painter, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 use photocraft_color::BlendMode;
-use photocraft_doc::Layer;
+use photocraft_doc::{Document, Layer, LayerId, Locks};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::icons;
@@ -68,10 +69,21 @@ pub fn layout(row: Rect, name_left: f32, items: &[(Indicator, f32)]) -> (Vec<(In
     (out, name_right)
 }
 
+/// Whether locks `k` show the row's lock icon.
+pub fn shows_lock(k: &Locks) -> bool {
+    k.transparency || k.position || k.all
+}
+
+/// Layers inside a group that shows a lock: their rows show it too, dimmed.
+pub fn inherited_locks(doc: &Document) -> HashSet<LayerId> {
+    doc.walk().into_iter().filter(|(p, _, _)| p.split_last().is_some_and(|(_, group)| shows_lock(&doc.locks_at(group)))).map(|(_, _, l)| l.id).collect()
+}
+
 /// Width the always-shown indicators of `l` take at the row's right (blend label excluded).
-pub fn reserved_width(l: &Layer) -> f32 {
+/// `inherited`: a group around `l` shows a lock.
+pub fn reserved_width(l: &Layer, inherited: bool) -> f32 {
     let mut w = RIGHT_PAD;
-    if l.locks.transparency || l.locks.position || l.locks.all {
+    if inherited || shows_lock(&l.locks) {
         w += ICON_W + GAP;
     }
     if !l.effects.items.is_empty() {
@@ -102,18 +114,21 @@ pub fn truncated(painter: &Painter, text: &str, font: FontId, color: egui::Color
 
 /// Paint `l`'s right-hand indicators in `row` and handle the effects triangle. Returns the
 /// name's right limit, the indicator rects, and whether the triangle was clicked this frame (so
-/// the row doesn't also treat the click as a selection).
+/// the row doesn't also treat the click as a selection). `inherited`: a group around `l` shows a
+/// lock.
 pub fn indicators(
     ui: &egui::Ui,
-    painter: &Painter,
     row: Rect,
     name_left: f32,
     l: &Layer,
+    inherited: bool,
     fx_open: bool,
     actions: &mut Vec<(String, Value)>,
 ) -> (f32, Vec<(Indicator, Rect)>, bool) {
+    let painter = &ui.painter_at(row.expand(1.0));
     let t = Tokens::get(ui.ctx());
-    let locked = l.locks.transparency || l.locks.position || l.locks.all;
+    let own = shows_lock(&l.locks);
+    let locked = own || inherited;
     let fx_font = theme::semibold(11.0);
     let blend_font = FontId::proportional(10.5);
     let has_fx = !l.effects.items.is_empty();
@@ -139,7 +154,10 @@ pub fn indicators(
     let cy = row.center().y;
     for &(kind, r) in &rects {
         match kind {
-            Indicator::Lock => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, t.text_faint),
+            // A lock inherited from a group is dimmed.
+            Indicator::Lock => {
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, if own { t.icon } else { t.text_faint })
+            }
             Indicator::Link => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "link", 12.0, t.text_faint),
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {
