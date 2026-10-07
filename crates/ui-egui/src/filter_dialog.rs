@@ -208,6 +208,10 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
 fn straighten_defaults(app: &PhotocraftApp, fields: &mut Map<String, Value>) {
     let Some(r) = app.session.active().and_then(|d| d.doc.measurement.ruler) else { return };
     let rot = photocraft_engine::analysis_cmds::straighten_angle(&r);
+    // A ruler read from a damaged file could hold non-finite ends: keep the 0° default then.
+    if !rot.is_finite() {
+        return;
+    }
     fields.insert("angle".into(), json!(rot.abs()));
     fields.insert("direction".into(), json!(if rot < 0.0 { "ccw" } else { "cw" }));
 }
