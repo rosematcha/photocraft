@@ -2145,12 +2145,13 @@ fn adjustments_grid(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 }
 
 /// The Color panel's foreground and background chips. A click picks the colour the field edits,
-/// framed; a double-click opens the Color Picker on it. Returns whether the background is picked.
-fn field_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, chips: Rect, bg_active: bool) -> bool {
+/// framed; a double-click opens the Color Picker on it.
+fn field_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, chips: Rect) {
     let t = Tokens::get(ui.ctx());
     let bgr = Rect::from_min_size(chips.min + vec2(13.0, 13.0), vec2(22.0, 22.0));
     let fgr = Rect::from_min_size(chips.min + vec2(3.0, 3.0), vec2(22.0, 22.0));
     let frame = Stroke::new(1.0, t.text_dim);
+    let bg_active = app.ui.color_panel.background;
     let p = ui.painter();
     p.rect_filled(bgr, 2.0, c32(app.session.tools.background));
     p.rect_stroke(bgr, 2.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
@@ -2166,17 +2167,16 @@ fn field_chips(app: &mut PhotocraftApp, ui: &mut egui::Ui, chips: Rect, bg_activ
     let bg_resp = ui.interact(bgr, ui.id().with("field-bg"), Sense::click());
     let fg_resp = ui.interact(fgr, ui.id().with("field-fg"), Sense::click());
     let picked = if fg_resp.clicked() { false } else { bg_resp.clicked() || bg_active };
+    app.ui.color_panel.background = picked;
     if fg_resp.double_clicked() || bg_resp.double_clicked() {
         crate::color_picker_ui::open(app, if picked { "background" } else { "foreground" });
     }
-    picked
 }
 
 /// Photoshop Color panel: saturation/brightness field + hue strip, drawn as shaded meshes.
 fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
-    let bg_key = egui::Id::new("color-field-bg");
-    let mut bg_active: bool = ui.data(|d| d.get_temp(bg_key)).unwrap_or(false);
+    let bg_active = app.ui.color_panel.background;
     let key = egui::Id::new(("color-field-hue", bg_active));
     let mut hsva = srgb_hsva(if bg_active { app.session.tools.background } else { app.session.tools.foreground });
     // Keep hue stable for greys (where RGB->HSV hue is undefined).
@@ -2190,8 +2190,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let (chips, _) = ui.allocate_exact_size(vec2(38.0, h), Sense::hover());
-        bg_active = field_chips(app, ui, chips, bg_active);
-        ui.data_mut(|d| d.insert_temp(bg_key, bg_active));
+        field_chips(app, ui, chips);
         // SV field.
         let field_w = w - 38.0 - strip_w - 16.0;
         let (field, fresp) = ui.allocate_exact_size(vec2(field_w, h), Sense::click_and_drag());
@@ -2539,6 +2538,7 @@ mod color_tests {
         click(&mut h, min + vec2(40.0, 40.0));
         // The field's top-left: no saturation, full brightness.
         click(&mut h, min + vec2(60.0, 10.0));
+        assert!(h.state().ui.color_panel.background);
         let tools = &h.state().session.tools;
         assert_eq!(tools.foreground, [0.2, 0.4, 0.6, 1.0]);
         assert!(tools.background[..3].iter().all(|&v| v > 0.9), "{:?}", tools.background);
@@ -2549,7 +2549,8 @@ mod color_tests {
         let app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         let mut h = field_harness(app);
         let min = h.ctx.input(|i| i.viewport_rect()).min;
-        for (p, target) in [(vec2(40.0, 40.0), "background"), (vec2(16.0, 16.0), "foreground")] {
+        // The foreground point is where the chips overlap: the foreground is on top there.
+        for (p, target) in [(vec2(40.0, 40.0), "background"), (vec2(30.0, 30.0), "foreground")] {
             h.state_mut().ui.dialogs.clear();
             // Past the last double-click, so this one isn't counted as a triple-click.
             h.run_steps(40);
